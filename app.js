@@ -7,8 +7,9 @@ const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const app = express();
 const mongoose = require("mongoose");
-// const encrypt = require("mongoose-encryption");  // Changed to md5 hash encryption.
-const md5 = require('md5');
+// const md5 = require('md5');  // Changed to bcrypt pkg.
+const bcrypt = require("bcrypt");
+const saltRounds = 10;
 
 app.use(express.static("public"));
 app.set("view engine", "ejs");
@@ -29,12 +30,6 @@ const userSchema = new mongoose.Schema({
   password: String,
 });
 
-//    Now using md5 hash encryption.
-// userSchema.plugin(encrypt, {
-//   secret: process.env.SECRET,
-//   encryptedFields: ["password"],
-// });
-
 const User = new mongoose.model("User", userSchema);
 
 app.get("/", function (req, res) {
@@ -49,16 +44,20 @@ app.get("/register", function (req, res) {
 
 // New user POST req.
 app.post("/register", function (req, res) {
-  const newUser = new User({
-    email: req.body.username,
-    password: md5(req.body.password),
-  });
-  newUser.save((err) => {
-    if (err) {
-      console.log(err);
-    } else {
-      res.render("secrets"); // Only render secrets if no error - not a get req
-    }
+  bcrypt.hash(req.body.password, saltRounds, function (err, hash) {
+    // Generating a bcrypt salted-hashed password -> PlaintextPass (submit data), saltRounds
+
+    const newUser = new User({
+      email: req.body.username,
+      password: hash,
+    });
+    newUser.save((err) => {
+      if (err) {
+        console.log(err);
+      } else {
+        res.render("secrets"); // Only render secrets if no error - not a get req
+      }
+    });
   });
 });
 
@@ -71,9 +70,15 @@ app.post("/login", function (req, res) {
       console.log(err);
     } else {
       if (foundUser) {
-        if (foundUser.password === md5(password)) {
-          res.render("secrets");
-        } else res.sendStatus(403)
+        bcrypt.compare(
+          password,
+          foundUser.password,
+          function (resultErr, result) {
+            if (result === true) {
+              res.render("secrets");
+            } else res.status(403).send(resultErr);
+          }
+        );
       }
     }
   });
