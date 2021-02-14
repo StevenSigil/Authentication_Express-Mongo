@@ -1,14 +1,14 @@
 //jshint esversion:6
 
-require('dotenv').config();
+require("dotenv").config();
 
 const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const app = express();
 const mongoose = require("mongoose");
-const encrypt = require("mongoose-encryption");
-
+// const encrypt = require("mongoose-encryption");  // Changed to md5 hash encryption.
+const md5 = require('md5');
 
 app.use(express.static("public"));
 app.set("view engine", "ejs");
@@ -29,8 +29,11 @@ const userSchema = new mongoose.Schema({
   password: String,
 });
 
-// Secret key moved to environment variable:
-userSchema.plugin(encrypt, { secret: process.env.SECRET, encryptedFields: ["password"] });  // Only encrypting 'password'
+//    Now using md5 hash encryption.
+// userSchema.plugin(encrypt, {
+//   secret: process.env.SECRET,
+//   encryptedFields: ["password"],
+// });
 
 const User = new mongoose.model("User", userSchema);
 
@@ -48,7 +51,7 @@ app.get("/register", function (req, res) {
 app.post("/register", function (req, res) {
   const newUser = new User({
     email: req.body.username,
-    password: req.body.password,
+    password: md5(req.body.password),
   });
   newUser.save((err) => {
     if (err) {
@@ -68,9 +71,9 @@ app.post("/login", function (req, res) {
       console.log(err);
     } else {
       if (foundUser) {
-        if (foundUser.password === password) {
+        if (foundUser.password === md5(password)) {
           res.render("secrets");
-        }
+        } else res.sendStatus(403)
       }
     }
   });
