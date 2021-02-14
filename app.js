@@ -1,11 +1,14 @@
 //jshint esversion:6
 
+require('dotenv').config();
+
 const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const app = express();
 const mongoose = require("mongoose");
 const encrypt = require("mongoose-encryption");
+
 
 app.use(express.static("public"));
 app.set("view engine", "ejs");
@@ -26,10 +29,8 @@ const userSchema = new mongoose.Schema({
   password: String,
 });
 
-// Secret key for encryption - must define the encryption plugin before creating any models
-// Automatically encrypts on instance.save | decrypts on instance.find
-const secret = "ThisIsTheSecret";
-userSchema.plugin(encrypt, { secret: secret, encryptedFields: ["password"] });  // Only encrypting 'password'
+// Secret key moved to environment variable:
+userSchema.plugin(encrypt, { secret: process.env.SECRET, encryptedFields: ["password"] });  // Only encrypting 'password'
 
 const User = new mongoose.model("User", userSchema);
 
