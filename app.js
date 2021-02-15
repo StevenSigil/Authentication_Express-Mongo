@@ -7,12 +7,14 @@ const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const app = express();
 const mongoose = require("mongoose");
-// const bcrypt = require("bcrypt");  // Replaced by session auth. via below.
-// const saltRounds = 10;
 const session = require("express-session");
 const passport = require("passport");
-const LocalStrategy = require('passport-local');
+const LocalStrategy = require("passport-local");
 const passportLocalMongoose = require("passport-local-mongoose");
+const findOrCreate = require("mongoose-findorcreate");
+
+// Google oauth
+const GoogleStrategy = require("passport-google-oauth20").Strategy;
 
 app.use(express.static("public"));
 app.set("view engine", "ejs");
@@ -21,7 +23,7 @@ app.use(
     extended: true,
   })
 );
-// Creating/configuring the session.
+
 app.use(
   session({
     secret: "A secret key!",
@@ -29,7 +31,7 @@ app.use(
     saveUninitialized: false,
   })
 );
-// Initialize passport to handle the session
+
 app.use(passport.initialize());
 app.use(passport.session());
 
@@ -37,25 +39,70 @@ mongoose.connect("mongodb://localhost:27017/userDB", {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 });
-mongoose.set("useCreateIndex", true); // Replaced deprecated 'collection.ensureIndex
+mongoose.set("useCreateIndex", true);
 
 // User model - Schema for DB to follow
 const userSchema = new mongoose.Schema({
   email: String,
   password: String,
+  googleId: String,
 });
-// Enable passport local mongoose for the User model.
+
 userSchema.plugin(passportLocalMongoose);
+userSchema.plugin(findOrCreate);
+
 const User = new mongoose.model("User", userSchema);
 
-// Serialize/Deserialize the User data/model
-passport.use(new LocalStrategy(User.authenticate()))
-passport.serializeUser(User.serializeUser());
-passport.deserializeUser(User.deserializeUser());
+passport.use(User.createStrategy());
+
+passport.serializeUser(function (user, done) {
+  done(null, user.id);
+});
+passport.deserializeUser(function (id, done) {
+  User.findById(id, function (err, user) {
+    done(err, user);
+  });
+});
+
+//  Replaced by Google strategy serializers.
+// passport.use(new LocalStrategy(User.authenticate()));
+// passport.serializeUser(User.serializeUser());
+// passport.deserializeUser(User.deserializeUser());
+
+passport.use(
+  new GoogleStrategy(
+    {
+      clientID: process.env.CLIENT_ID,
+      clientSecret: process.env.CLIENT_SECRET,
+      callbackURL: "http://localhost:3000/auth/google/secrets",
+      userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo",
+    },
+    function (accessToken, refreshToken, profile, cb) {
+      console.log(profile);
+
+      User.findOrCreate({ googleId: profile.id }, function (err, user) {
+        return cb(err, user);
+      });
+    }
+  )
+);
 
 app.get("/", function (req, res) {
   res.render("home");
 });
+app.get(
+  "/auth/google",
+  passport.authenticate("google", { scope: ["profile"] })
+);
+
+app.get(
+  "/auth/google/secrets",
+  passport.authenticate("google", { failureRedirect: "/login" }),
+  function (req, res) {
+    res.redirect("/secrets");
+  }
+);
+
 app.get("/login", function (req, res) {
   res.render("login");
 });
@@ -71,10 +118,10 @@ app.get("/secrets", function (req, res) {
   }
 });
 
-app.get('/logout', function (req, res) {
+app.get("/logout", function (req, res) {
   req.logout();
-  res.redirect('/');
-})
+  res.redirect("/");
+});
 
 // New user POST req.
 app.post("/register", function (req, res) {
@@ -87,7 +134,7 @@ app.post("/register", function (req, res) {
         res.redirect("/register");
       } else {
         passport.authenticate("local")(req, res, function () {
-          res.redirect("/secrets"); // Now a user can still be logged in and go straight to '/secrets'.
+          res.redirect("/secrets");
         });
       }
     }
@@ -104,7 +151,7 @@ app.post("/login", function (req, res) {
     if (err) {
       console.log(err);
     } else {
-      passport.authenticate("local") (req, res, function () {
+      passport.authenticate("local")(req, res, function () {
         res.redirect("/secrets");
       });
     }
